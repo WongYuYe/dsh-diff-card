@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif">
-  <title>DSH Diff Stat — inline +N −M badges, per-turn change cards, aligned diffs</title>
+  <title>dsh-diff-card — inline +N −M, per-turn change card, aligned diffs</title>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#f8fafd"/><stop offset="1" stop-color="#edf0f6"/>
@@ -31,11 +31,11 @@
   <rect x="80" y="104" width="15" height="4" rx="2" fill="#e5544a"/>
   <rect x="80" y="111" width="20" height="4" rx="2" fill="#c3cbd8"/>
 
-  <text x="140" y="118" font-size="45" font-weight="750" letter-spacing="-0.5" fill="#1c2430">DSH <tspan fill="url(#tg)">Diff Stat</tspan></text>
-  <text x="142" y="155" font-size="17" fill="#3f4754">Inline +N −M badges · per-turn change cards · aligned diffs</text>
-  <text x="142" y="182" font-size="14" fill="#6b7482">A DeepSeek Harness Web plugin · No git required · zh/en</text>
-  <rect x="142" y="200" width="334" height="32" rx="8" fill="#ffffff" fill-opacity=".6" stroke="#d8dfe9"/>
-  <text x="156" y="220" font-size="12" font-family="ui-monospace, 'Cascadia Code', Consolas, Menlo, monospace" fill="#475064">dsh plugin --profile web add dsh-diff-stat</text>
+  <text x="140" y="118" font-size="45" font-weight="750" letter-spacing="-0.5" fill="#1c2430">DSH <tspan fill="url(#tg)">Diff Card</tspan></text>
+  <text x="142" y="155" font-size="17" fill="#3f4754">Inline +N −M · per-turn change card · aligned diffs</text>
+  <text x="142" y="182" font-size="14" fill="#6b7482">A DSH Desktop plugin · macOS / Windows · zh / en</text>
+  <rect x="142" y="200" width="392" height="32" rx="8" fill="#ffffff" fill-opacity=".6" stroke="#d8dfe9"/>
+  <text x="156" y="220" font-size="12" font-family="ui-monospace, 'Cascadia Code', Consolas, Menlo, monospace" fill="#475064">dsh plugin --profile desktop add dsh-diff-card</text>
 
   <!-- glass card stack -->
   <g>
