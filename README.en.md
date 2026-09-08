@@ -1,78 +1,73 @@
-# DSH Diff Card
+# dsh-diff-card
 
 [中文](README.md) | English
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
-    <img src="docs/banner.svg" alt="DSH Diff Card" width="720">
+    <img src="docs/banner.svg" alt="dsh-diff-card" width="720">
   </picture>
 </p>
 
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 [![dsh plugin](https://img.shields.io/badge/dsh-plugin-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
-[![npm](https://img.shields.io/npm/v/dsh-diff-card?style=flat-square)](https://www.npmjs.com/package/dsh-diff-card) [![npm downloads](https://img.shields.io/npm/dt/dsh-diff-card?style=flat-square)](https://www.npmjs.com/package/dsh-diff-card)
-[![dsh](https://img.shields.io/badge/dsh-%E2%89%A50.1.2-rc.1-4D6BFE?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
-![platform](https://img.shields.io/badge/platform-web-8A9CF5?style=flat-square)
+[![npm](https://img.shields.io/npm/v/dsh-diff-card?style=flat-square)](https://www.npmjs.com/package/dsh-diff-card)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![i18n](https://img.shields.io/badge/i18n-zh%20%7C%20en-success?style=flat-square)
-[![Commit activity](https://img.shields.io/github/commit-activity/t/WongYuYe/dsh-diff-card?style=flat-square)](https://github.com/WongYuYe/dsh-diff-card/graphs/commit-activity)
-[![Last commit](https://img.shields.io/github/last-commit/WongYuYe/dsh-diff-card?style=flat-square)](https://github.com/WongYuYe/dsh-diff-card/commits)
 
-A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web plugin that visualizes agent file changes: inline **+N −M** badges on mutation tool rows, a per-turn file-change summary card, and full aligned diffs on click. Covers native `edit`/`write` calls, the minimal preset's `str_replace_editor`, and Code Dispatch (PTC) sub-calls end to end. No git dependency, no third-party plugin dependencies.
+Codex-style file-change card for [DSH Desktop](https://github.com/anywhere-labs/dsh-desktop): **+N −M** on edit/write rows, a per-turn file list, and aligned diffs on click. Open files with the system app, Finder/Explorer, or VS Code on macOS and Windows. No git required.
 
 <p align="center">
   <img src="docs/demo.svg" alt="demo" width="720">
 </p>
 
-## Features
+## What it does
 
-- **Kernel target: harness ≥ 0.1.2-rc.1** — one build for the current production line: the `uiConversation` event registry, `tool.call.toolview` keyed slot and `conversation.chat.turnTail` chain ship their `0.1.2-rc.1+` shapes, and diff hunks are read from the tools' persisted wire `meta`.
-- **Inline +N −M badges** — takes over the stock mutation rows for `edit`, `write` and `str_replace_editor` (keyed lower-priority shadow; uninstall restores stock). Counts are the real changed lines — the same LCS walk the diff renders — estimated from the arguments while running, exact once the result settles
-- **Aligned diff window** — expanding a row opens a height-capped scrollable unified view. Both sides are LCS-aligned first: shared lines render as up to ±3 lines of context around each change, untouched runs collapse into ⋯, and the footer counts exactly the rendered rows
-- **Line-number gutters** — the file view numbers its lines 1..N and the diff window pins each hunk to its real position in the current file (one cached fenced read, uniqueness-checked): deleted rows read the old side, context/added rows the new side, with the changed rows' accent bars. A hunk that cannot be located (host absent, drifted file, over budget) numbers window-relatively 1..N, so the gutter always renders
-- **Per-turn summary card** — Codex-style "Edited N files" card with View changes / Undo / Review, a 3-file preview, full relative paths and +n −m. Same-file edits merge and accumulate in settlement order
-- **Code Dispatch (PTC), end to end** — dispatch sub-calls carry no wire diff view: rows fall back to the argument-derived diff, and the summary card joins their files from the stock chat tool tree, so a pure Code-Mode turn still gets its card. `subCallId` dedup keeps replays from double-counting
-- **File-context boost** — bare argument fragments gain up to ±3 lines of real file context when expanded: the booster reads the file through the host's fenced API, locates the fragment's post-image and rebuilds the hunk (best-effort; unlocatable fragments keep their bare form)
-- **Undo** — reverts the turn's files to their pre-turn state: reverse uniqueness-checked hunk peeling, turn-start snapshots prove a file was CREATED (not overwritten) before its deletion, drifted files rejected before any write, atomic commits
-- **Inline view & open-with** — "Open" launches the file with the OS default app (macOS `open` / Windows file association); the ▾ menu keeps inline preview, reveal in Finder/Explorer, VS Code, and absolute/relative path copy
-- **Frosted glass (optional)** — with [deepseek-harness-background](https://github.com/HaoyueQin/deepseek-harness-background) installed, every plugin surface joins its shared glass recipe; without it the stock opaque look stays untouched — graceful degradation, zero third-party runtime additions (peer modules come from the harness)
-- **zh / en** — copy follows the Web UI language (locale service)
+- **+N −M** on edit and write tool rows
+- Per-turn card: “Edited N files”, 3-file preview, header total `+xx −xx`
+- **View changes**: expand every file and its diff; click again to collapse
+- **Review**: expand every diff in the turn
+- **Undo**: restore this turn’s files (refuses if they changed elsewhere)
+- Click a row to expand/collapse that file’s diff
+- Row **▾**: open with system, show in folder, VS Code, copy absolute/relative path
+- Covers native `edit` / `write`, `str_replace_editor`, and Code Dispatch sub-calls
+- Copy follows the UI language (zh / en)
 
 ## Screenshots
 
-| Turn summary card | Taken-over row & aligned diff |
+| Turn card | Row badge and diff |
 | --- | --- |
-| ![turn summary card with per-file rows and inline preview](docs/images/glass-card-peek.png) | ![taken-over edit row with badge and aligned diff](docs/images/glass-diff-edit.png) |
-
-Per-turn card with review / open / undo per file (left); an inline badge with its aligned diff window (right), both under the optional background glass.
-
-## How it works
-
-- **Badges & diffs**: registers the `edit`/`write`/`str_replace_editor` keys of the `tool.call.toolview` keyed slot at priority −1 (shadows the shipped rows). Diff data follows the applied wire meta (oldText/newText with ±3 file context) with the call-time argument fallback for PTC sub-calls, so a truncated window that dropped the call head still renders from the result meta
-- **Turn summary card**: a `ConversationNodeDefinition` accumulator (`turn/start`, `tool/call`, `tool/result(append)`, `tool/code-dispatch`) publishes Turn data; the `conversation.chat.turnTail` chain claims rendering — modeled on the official `ui-deliverables` plugin. Code-Dispatch files join from the stock chat tool tree, whose `tool-call` nodes already fold every dispatch into its root call's `subCalls`
-- **Context boost**: argument-derived hunks are marked by object identity at construction; on expand the booster reads the file through the fenced API (LRU-cached), locates the fragment's post-image and rebuilds the hunk with shared lines. Anything unlocatable renders as-is
-- **Host half (optional)**: a same-origin prefix route serves a fenced API (files.read, capture-snapshot per turn, undo, open-with) — realpath containment checked before and after resolution, symlink rejection, UTF-8 round-trip validation, display reads capped at 512 KiB with a truncation flag, a 32 MiB undo gate, and atomic writes. When the host half is absent the dependent actions hide themselves
-- **Frosted glass bridge (optional)**: a zero-dependency consumer of the background plugin's `window.__DSH_BACKGROUND_GLASS__` registry — subscribing to its ready event (both arrival orders + hot reload); the bridge never appearing leaves the ordinary UI untouched
+| ![turn card](docs/images/glass-card-peek.png) | ![aligned diff](docs/images/glass-diff-edit.png) |
 
 ## Install
 
 ```sh
-dsh plugin --profile desktop add /Users/wyuye/Works/dsh-diff-card
+dsh plugin --profile desktop add dsh-diff-card
 ```
+
+Refresh the web GUI or restart DSH Desktop.
+
+From source:
+
+```sh
+git clone https://github.com/WongYuYe/dsh-diff-card.git
+cd dsh-diff-card
+pnpm install
+dsh plugin --profile desktop add .
+```
+
+Requires DeepSeek Harness `>= 0.1.2-rc.1`.
 
 ## Development
 
 ```sh
-pnpm install        # devDependencies; prepare builds lib/ automatically
-pnpm build          # host half → lib/index.js + browser half → lib/client.js (one tsdown run)
-pnpm typecheck      # both halves via tsc
-pnpm check:align    # diff aligner & data-model assertions (needs Node >= 23.6)
+pnpm install
+pnpm build
+pnpm typecheck
+pnpm check:align
+pnpm check:join
 ```
 
-> **Kernel compatibility:** this build targets harness `>= 0.1.2-rc.1`. File-open works on macOS and Windows.
->
-> **Release:** bump `package.json` to `X.Y.Z` and push a `vX.Y.Z` tag. GitHub Actions opens the GitHub Release and publishes to npm with Trusted Publisher (OIDC); no local 2FA.
+Release: bump `package.json` to `X.Y.Z` and push a `vX.Y.Z` tag. GitHub Actions opens the Release and publishes to npm with Trusted Publisher.
 
 Forked from [HaoyueQin/dsh-diff-stat](https://github.com/HaoyueQin/dsh-diff-stat) with a Mac/Windows opener.
 
