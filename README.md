@@ -2,13 +2,6 @@
 
 中文 | [English](README.en.md)
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/banner-zh-dark.svg">
-    <img src="docs/banner-zh.svg" alt="dsh-diff-card" width="720">
-  </picture>
-</p>
-
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 [![npm](https://img.shields.io/npm/v/dsh-diff-card?style=flat-square)](https://www.npmjs.com/package/dsh-diff-card)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -16,7 +9,7 @@
 给 [DSH Desktop](https://github.com/anywhere-labs/dsh-desktop) 用的改动卡。智能体改完文件后，工具行显示 **+N −M**，轮末列出本轮改过的文件，点开就能审 diff。macOS 和 Windows 都能用系统应用、文件夹或 VS Code 打开文件。
 
 <p align="center">
-  <img src="docs/demo-zh.svg" alt="demo" width="720">
+  <img src="docs/demo.png" alt="轮末改动卡" width="720">
 </p>
 
 ## 功能
@@ -30,12 +23,6 @@
 - 行上的 **▾**：系统打开、在文件夹中显示、VS Code、复制绝对 / 相对路径
 - 覆盖 `edit`、`write`、`str_replace_editor` 和 Code Dispatch 子调用
 - 文案跟随界面语言（中 / 英）
-
-## 截图
-
-| 轮末卡片 | 行内徽标与 diff |
-| --- | --- |
-| ![轮末卡片](docs/images/glass-card-peek.png) | ![对齐 diff](docs/images/glass-diff-edit.png) |
 
 ## 安装
 

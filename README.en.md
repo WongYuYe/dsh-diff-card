@@ -2,13 +2,6 @@
 
 [中文](README.md) | English
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
-    <img src="docs/banner.svg" alt="dsh-diff-card" width="720">
-  </picture>
-</p>
-
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 [![npm](https://img.shields.io/npm/v/dsh-diff-card?style=flat-square)](https://www.npmjs.com/package/dsh-diff-card)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -16,7 +9,7 @@
 File-change card for [DSH Desktop](https://github.com/anywhere-labs/dsh-desktop). After the agent edits files, tool rows show **+N −M**, a per-turn list appears, and you can review aligned diffs on click. Open files with the system app, Finder/Explorer, or VS Code on macOS and Windows.
 
 <p align="center">
-  <img src="docs/demo.svg" alt="demo" width="720">
+  <img src="docs/demo.png" alt="per-turn change card" width="720">
 </p>
 
 ## Features
@@ -30,12 +23,6 @@ File-change card for [DSH Desktop](https://github.com/anywhere-labs/dsh-desktop)
 - Row **▾**: open with system, show in folder, VS Code, copy absolute / relative path
 - Covers `edit`, `write`, `str_replace_editor`, and Code Dispatch sub-calls
 - Copy follows the UI language (zh / en)
-
-## Screenshots
-
-| Turn card | Row badge and diff |
-| --- | --- |
-| ![turn card](docs/images/glass-card-peek.png) | ![aligned diff](docs/images/glass-diff-edit.png) |
 
 ## Install
 
