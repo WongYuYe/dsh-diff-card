@@ -71,6 +71,8 @@ pnpm check:align    # 对齐引擎与数据模型断言（需 Node >= 23.6）
 ```
 
 > **内核兼容性：** 本构建面向 harness `>= 0.1.2-rc.1`。打开文件同时支持 macOS 与 Windows。
+>
+> **发布：** 把 `package.json` 版本改成 `X.Y.Z` 后推 `vX.Y.Z` tag。GitHub Actions 会打 GitHub Release 并用 Trusted Publisher（OIDC）发到 npm，本机不用再输 2FA。
 
 基于 [HaoyueQin/dsh-diff-stat](https://github.com/HaoyueQin/dsh-diff-stat) 增加跨平台打开。
 

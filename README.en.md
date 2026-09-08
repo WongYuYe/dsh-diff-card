@@ -71,6 +71,8 @@ pnpm check:align    # diff aligner & data-model assertions (needs Node >= 23.6)
 ```
 
 > **Kernel compatibility:** this build targets harness `>= 0.1.2-rc.1`. File-open works on macOS and Windows.
+>
+> **Release:** bump `package.json` to `X.Y.Z` and push a `vX.Y.Z` tag. GitHub Actions opens the GitHub Release and publishes to npm with Trusted Publisher (OIDC); no local 2FA.
 
 Forked from [HaoyueQin/dsh-diff-stat](https://github.com/HaoyueQin/dsh-diff-stat) with a Mac/Windows opener.
 
