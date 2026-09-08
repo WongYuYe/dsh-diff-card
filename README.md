@@ -1,11 +1,11 @@
 # DSH Diff Card
 
-[English](README.md) | [中文](README.zh.md)
+中文 | [English](README.en.md)
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
-    <img src="docs/banner.svg" alt="DSH Diff Card" width="720">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/banner-zh-dark.svg">
+    <img src="docs/banner-zh.svg" alt="DSH Diff Card" width="720">
   </picture>
 </p>
 
@@ -19,60 +19,60 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/t/WongYuYe/dsh-diff-card?style=flat-square)](https://github.com/WongYuYe/dsh-diff-card/graphs/commit-activity)
 [![Last commit](https://img.shields.io/github/last-commit/WongYuYe/dsh-diff-card?style=flat-square)](https://github.com/WongYuYe/dsh-diff-card/commits)
 
-A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web plugin that visualizes agent file changes: inline **+N −M** badges on mutation tool rows, a per-turn file-change summary card, and full aligned diffs on click. Covers native `edit`/`write` calls, the minimal preset's `str_replace_editor`, and Code Dispatch (PTC) sub-calls end to end. No git dependency, no third-party plugin dependencies.
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web 插件，将智能体的文件变更可视化：变更工具行内联 **+N −M** 徽标、轮末文件变更汇总卡、点击展开对齐后的完整 diff。原生 `edit`/`write` 调用、极简预设的 `str_replace_editor`、Code Dispatch（PTC）子调用全链路覆盖。不依赖 git，不依赖任何第三方插件。
 
 <p align="center">
-  <img src="docs/demo.svg" alt="demo" width="720">
+  <img src="docs/demo-zh.svg" alt="demo" width="720">
 </p>
 
-## Features
+## 功能
 
-- **Kernel target: harness ≥ 0.1.2-rc.1** — one build for the current production line: the `uiConversation` event registry, `tool.call.toolview` keyed slot and `conversation.chat.turnTail` chain ship their `0.1.2-rc.1+` shapes, and diff hunks are read from the tools' persisted wire `meta`.
-- **Inline +N −M badges** — takes over the stock mutation rows for `edit`, `write` and `str_replace_editor` (keyed lower-priority shadow; uninstall restores stock). Counts are the real changed lines — the same LCS walk the diff renders — estimated from the arguments while running, exact once the result settles
-- **Aligned diff window** — expanding a row opens a height-capped scrollable unified view. Both sides are LCS-aligned first: shared lines render as up to ±3 lines of context around each change, untouched runs collapse into ⋯, and the footer counts exactly the rendered rows
-- **Line-number gutters** — the file view numbers its lines 1..N and the diff window pins each hunk to its real position in the current file (one cached fenced read, uniqueness-checked): deleted rows read the old side, context/added rows the new side, with the changed rows' accent bars. A hunk that cannot be located (host absent, drifted file, over budget) numbers window-relatively 1..N, so the gutter always renders
-- **Per-turn summary card** — Codex-style "Edited N files" card with View changes / Undo / Review, a 3-file preview, full relative paths and +n −m. Same-file edits merge and accumulate in settlement order
-- **Code Dispatch (PTC), end to end** — dispatch sub-calls carry no wire diff view: rows fall back to the argument-derived diff, and the summary card joins their files from the stock chat tool tree, so a pure Code-Mode turn still gets its card. `subCallId` dedup keeps replays from double-counting
-- **File-context boost** — bare argument fragments gain up to ±3 lines of real file context when expanded: the booster reads the file through the host's fenced API, locates the fragment's post-image and rebuilds the hunk (best-effort; unlocatable fragments keep their bare form)
-- **Undo** — reverts the turn's files to their pre-turn state: reverse uniqueness-checked hunk peeling, turn-start snapshots prove a file was CREATED (not overwritten) before its deletion, drifted files rejected before any write, atomic commits
-- **Inline view & open-with** — "Open" launches the file with the OS default app (macOS `open` / Windows file association); the ▾ menu keeps inline preview, reveal in Finder/Explorer, VS Code, and absolute/relative path copy
-- **Frosted glass (optional)** — with [deepseek-harness-background](https://github.com/HaoyueQin/deepseek-harness-background) installed, every plugin surface joins its shared glass recipe; without it the stock opaque look stays untouched — graceful degradation, zero third-party runtime additions (peer modules come from the harness)
-- **zh / en** — copy follows the Web UI language (locale service)
+- **内核目标：harness ≥ 0.1.2-rc.1** — 单一构建面向现行 rc 产线：`uiConversation` 事件注册表、`tool.call.toolview` keyed 槽与 `conversation.chat.turnTail` 链均为 `0.1.2-rc.1+` 形态，diff hunk 读自工具持久化的 wire `meta`。
+- **行内 +N −M 徽标** — 接管 `edit`、`write` 与 `str_replace_editor` 的 stock 变更行（keyed 低优先阴影，卸载自动还原）。计数是真实变更行数——与 diff 渲染共用同一趟 LCS：运行中按参数预估，结算后取精确值
+- **对齐 diff 窗口** — 点击行展开限高滚动的 unified 视图。两侧先做行级 LCS 对齐：共同行渲染为变更处 ±3 行上下文，更远的未变更区间折叠为 ⋯；页脚统计与正文渲染完全同源
+- **行号槽** — 文件视图按 1..N 编号；diff 窗口把每个 hunk 钉到当前文件中的真实位置（一次缓存围栏读取、唯一性校验）：删除行读旧侧号码、上下文/新增行读新侧号码，变更行带左缘色条；无法定位的 hunk（host 缺席、文件已再改动、超预算）退回窗口内 1..N 相对编号，行号槽始终渲染
+- **轮末汇总卡** — Codex 风格「已编辑 N 个文件」卡片，含查看更改 / 撤销 / 审核、默认预览 3 个文件、完整相对路径与 +n −m；同文件多次编辑按结算顺序合并累计
+- **Code Dispatch（PTC）全链路** — dispatch 子调用在 wire 上没有 diff 视图：行内回退到参数推导 diff，轮末卡从 stock 会话工具树 join 出其文件，纯 Code-Mode 轮同样有汇总卡；`subCallId` 去重防止重放双计
+- **文件上下文增强** — 参数推导的裸片段在展开时获得至多 ±3 行真实文件上下文：增强器经 host 围栏 API 读取文件、定位片段的 after 形态并重建 hunk（尽力而为；无法定位的片段保持原样）
+- **撤销** — 一键把本轮文件恢复到轮前状态：hunk 链倒序唯一性回剥、轮首快照证明文件为「本轮新建」（而非覆盖）后才删除、文件漂移在写入前拒绝、原子提交
+- **内嵌查看与打开系** — 点「打开」用系统默认应用打开文件（macOS `open` / Windows 默认关联）；「▾」菜单提供内嵌预览、在文件夹中显示（Finder / 资源管理器）、VS Code 与绝对/相对路径复制
+- **毛玻璃（可选）** — 安装 [deepseek-harness-background](https://github.com/HaoyueQin/deepseek-harness-background) 后，本插件全部表面并入其共享玻璃配方；未安装时保持 stock 不透明外观——优雅降级、零新增第三方运行时（peer 模块由 harness 提供）
+- **中英文** — 文案跟随 Web 界面语言（locale 服务）
 
-## Screenshots
+## 截图
 
-| Turn summary card | Taken-over row & aligned diff |
+| 轮末汇总卡 | 接管行与对齐 diff |
 | --- | --- |
-| ![turn summary card with per-file rows and inline preview](docs/images/glass-card-peek.png) | ![taken-over edit row with badge and aligned diff](docs/images/glass-diff-edit.png) |
+| ![轮末汇总卡：逐文件行与内嵌预览](docs/images/glass-card-peek.png) | ![接管编辑行：徽标与对齐 diff 窗口](docs/images/glass-diff-edit.png) |
 
-Per-turn card with review / open / undo per file (left); an inline badge with its aligned diff window (right), both under the optional background glass.
+左：轮末汇总卡，含逐文件审查 / 打开 / 撤销操作；右：行内 +N −M 徽标与其对齐 diff 窗口。均处于可选毛玻璃效果之下。
 
-## How it works
+## 机制
 
-- **Badges & diffs**: registers the `edit`/`write`/`str_replace_editor` keys of the `tool.call.toolview` keyed slot at priority −1 (shadows the shipped rows). Diff data follows the applied wire meta (oldText/newText with ±3 file context) with the call-time argument fallback for PTC sub-calls, so a truncated window that dropped the call head still renders from the result meta
-- **Turn summary card**: a `ConversationNodeDefinition` accumulator (`turn/start`, `tool/call`, `tool/result(append)`, `tool/code-dispatch`) publishes Turn data; the `conversation.chat.turnTail` chain claims rendering — modeled on the official `ui-deliverables` plugin. Code-Dispatch files join from the stock chat tool tree, whose `tool-call` nodes already fold every dispatch into its root call's `subCalls`
-- **Context boost**: argument-derived hunks are marked by object identity at construction; on expand the booster reads the file through the fenced API (LRU-cached), locates the fragment's post-image and rebuilds the hunk with shared lines. Anything unlocatable renders as-is
-- **Host half (optional)**: a same-origin prefix route serves a fenced API (files.read, capture-snapshot per turn, undo, open-with) — realpath containment checked before and after resolution, symlink rejection, UTF-8 round-trip validation, display reads capped at 512 KiB with a truncation flag, a 32 MiB undo gate, and atomic writes. When the host half is absent the dependent actions hide themselves
-- **Frosted glass bridge (optional)**: a zero-dependency consumer of the background plugin's `window.__DSH_BACKGROUND_GLASS__` registry — subscribing to its ready event (both arrival orders + hot reload); the bridge never appearing leaves the ordinary UI untouched
+- **徽标与 diff**：注册进 `tool.call.toolview` keyed 槽的 `edit`/`write`/`str_replace_editor` 键，priority −1 阴影 shipped 行；diff 数据按权威链提取：工具持久化的 wire meta（含 ±3 行文件上下文），PTC 子调用回退到调用时参数推导——窗口截断丢掉调用头时仍可从 result meta 渲染
+- **轮末汇总卡**：`ConversationNodeDefinition` 聚合器（`turn/start`、`tool/call`、`tool/result(append)`、`tool/code-dispatch`）发布 Turn 数据，`conversation.chat.turnTail` 链认领渲染——结构遵循官方 `ui-deliverables` 模式。Code-Dispatch 文件从 stock 会话工具树 join：其 `tool-call` 节点已把每个 dispatch 按 rootCallId 折叠进根调用的 `subCalls`
+- **上下文增强**：参数来源的 hunk 在构造时按对象身份标记；展开时增强器经围栏 API 读取文件（LRU 缓存）、定位片段的 after 形态并以共享行重建 hunk，无法定位的原样渲染
+- **host 半**（可选）：同源前缀路由提供围栏 API（files.read、每轮快照 capture、undo、open-with）——realpath 包含性解析前后双查、符号链接拒绝、UTF-8 回环校验、显示读取 512 KiB 上限并带截断标记、undo 32 MiB 门限、原子写；host 半缺席时相关操作自动隐藏
+- **毛玻璃桥**（可选）：零依赖消费 background 插件的 `window.__DSH_BACKGROUND_GLASS__` 注册表——常驻订阅其 ready 事件（覆盖两种到达顺序与热重载）；桥不存在时普通界面原样保留
 
-## Install
+## 安装
 
 ```sh
 dsh plugin --profile desktop add /Users/wyuye/Works/dsh-diff-card
 ```
 
-## Development
+## 开发
 
 ```sh
-pnpm install        # devDependencies; prepare builds lib/ automatically
-pnpm build          # host half → lib/index.js + browser half → lib/client.js (one tsdown run)
-pnpm typecheck      # both halves via tsc
-pnpm check:align    # diff aligner & data-model assertions (needs Node >= 23.6)
+pnpm install        # devDependencies；prepare 会自动构建 lib/
+pnpm build          # host 半 → lib/index.js + 浏览器半 → lib/client.js（一次 tsdown）
+pnpm typecheck      # 双端 tsc
+pnpm check:align    # 对齐引擎与数据模型断言（需 Node >= 23.6）
 ```
 
-> **Kernel compatibility:** this build targets harness `>= 0.1.2-rc.1`. File-open works on macOS and Windows.
+> **内核兼容性：** 本构建面向 harness `>= 0.1.2-rc.1`。打开文件同时支持 macOS 与 Windows。
 
-Forked from [HaoyueQin/dsh-diff-stat](https://github.com/HaoyueQin/dsh-diff-stat) with a Mac/Windows opener.
+基于 [HaoyueQin/dsh-diff-stat](https://github.com/HaoyueQin/dsh-diff-stat) 增加跨平台打开。
 
 ## License
 
