@@ -51,8 +51,6 @@ pnpm check:align
 pnpm check:join
 ```
 
-发布：把 `package.json` 改成 `X.Y.Z`，推 `vX.Y.Z` tag。GitHub Actions 会打 Release，并在已绑定 Trusted Publisher 时发到 npm。
-
 ## License
 
 MIT

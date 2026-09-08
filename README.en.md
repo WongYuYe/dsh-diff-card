@@ -51,8 +51,6 @@ pnpm check:align
 pnpm check:join
 ```
 
-Release: bump `package.json` to `X.Y.Z` and push a `vX.Y.Z` tag. GitHub Actions opens the Release and publishes to npm when Trusted Publisher is bound.
-
 ## License
 
 MIT
