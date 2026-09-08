@@ -1,0 +1,87 @@
+.peek {
+	border: 1px solid var(--dsw-alias-border-secondary, rgba(127, 127, 127, 0.2));
+	border-radius: 6px;
+	background: var(--dsw-alias-markdown-code-block);
+	font: var(--dsw-font-markdown-code-block, var(--dsw-font-xs-13));
+	overflow: hidden;
+}
+
+.bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 3px 8px;
+	color: var(--dsw-alias-label-tertiary);
+	border-bottom: 1px solid var(--dsw-alias-border-secondary, rgba(127, 127, 127, 0.15));
+}
+
+.barText {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.close {
+	margin-left: auto;
+	display: inline-flex;
+	align-items: center;
+	border: none;
+	background: transparent;
+	color: var(--dsw-alias-label-tertiary);
+	padding: 1px 4px;
+	border-radius: 4px;
+	cursor: pointer;
+	flex: none;
+}
+
+.close:hover {
+	color: var(--dsw-alias-label-primary);
+	background: var(--dsw-alias-fill-hover, rgba(127, 127, 127, 0.08));
+}
+
+.note {
+	padding: 6px 8px;
+	color: var(--dsw-alias-label-secondary);
+}
+
+.body {
+	max-height: 320px;
+	overflow: auto;
+	padding: 4px 0;
+	white-space: pre;
+}
+
+.line {
+	box-sizing: border-box;
+	display: flex;
+	padding: 0 8px 0 0;
+	min-height: var(--dsl-diff-line-height, 18px);
+	color: var(--dsw-alias-label-primary);
+}
+
+/* Sticky gutter: same convention as the diff window's number column — the
+   column pins to the pane's left edge while long lines scroll beneath it. */
+.no {
+	flex: none;
+	min-width: 4ch;
+	margin-right: 8px;
+	padding: 0 6px 0 10px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	color: var(--dsw-alias-label-tertiary);
+	background: var(--dsw-alias-markdown-code-block);
+	border-right: 1px solid var(--dsw-alias-border-secondary, rgba(127, 127, 127, 0.15));
+	position: sticky;
+	left: 0;
+	user-select: none;
+}
+
+.tx {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+
+.detail {
+	opacity: 0.75;
+}

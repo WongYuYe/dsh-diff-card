@@ -1,0 +1,185 @@
+.window {
+	border: 1px solid var(--dsw-alias-border-secondary, rgba(127, 127, 127, 0.2));
+	border-radius: 6px;
+	background: var(--dsw-alias-markdown-code-block);
+	overflow: hidden;
+}
+
+.scroll {
+	overflow: auto;
+	padding: 4px 0;
+	white-space: pre;
+	font: var(--dsw-font-markdown-code-block, var(--dsw-font-xs-13));
+	min-height: 0;
+}
+
+.line {
+	/* border-box: under content-box the min-width:100% row plus its horizontal
+	   padding always overflowed the scroll pane by 16px, so the pane carried a
+	   permanent horizontal scrollbar even for short lines. */
+	box-sizing: border-box;
+	display: flex;
+	width: max-content;
+	min-width: 100%;
+	padding: 0 8px 0 0;
+	min-height: var(--dsl-diff-line-height, 18px);
+	color: var(--dsw-alias-label-primary);
+}
+
+/* Sticky gutter: the number column pins to the pane's left edge while long
+   rows scroll beneath it. Each cell repaints the row's own surface over the
+   opaque window base so scrolled code never ghosts through the pinned
+   numbers, and changed rows carry the reference views' left accent bar. */
+.no {
+	flex: none;
+	min-width: 4ch;
+	margin-right: 8px;
+	padding: 0 6px 0 10px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	color: var(--dsw-alias-label-tertiary);
+	background: var(--dsw-alias-markdown-code-block);
+	border-right: 1px solid var(--dsw-alias-border-secondary, rgba(127, 127, 127, 0.15));
+	position: sticky;
+	left: 0;
+	user-select: none;
+}
+
+.tx {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.del .no {
+	color: #b91c1c;
+	background: color-mix(in srgb, #b91c1c 10%, var(--dsw-alias-markdown-code-block));
+	box-shadow: inset 3px 0 0 0 #b91c1c;
+}
+
+.add .no {
+	color: #15803d;
+	background: color-mix(in srgb, #15803d 10%, var(--dsw-alias-markdown-code-block));
+	box-shadow: inset 3px 0 0 0 #15803d;
+}
+
+/* Path header bar: the file name sits in its own bordered strip above the
+   numbered rows — the same separated presentation as the inline peek's top
+   bar — and stays pinned while a long diff scrolls (bar sticky to the top,
+   the name itself sticky to the left over horizontal scrolling). */
+.pathBar {
+	box-sizing: border-box;
+	width: max-content;
+	min-width: 100%;
+	padding: 3px 8px;
+	color: var(--dsw-alias-label-tertiary);
+	font-weight: 600;
+	background: var(--dsw-alias-markdown-code-block);
+	border-bottom: 1px solid var(--dsw-alias-border-secondary, rgba(127, 127, 127, 0.15));
+	position: sticky;
+	top: 0;
+	z-index: 1;
+}
+
+.pathText {
+	display: inline-block;
+	position: sticky;
+	left: 8px;
+}
+
+.ctx {
+	color: var(--dsw-alias-label-secondary);
+}
+
+.gap {
+	color: var(--dsw-alias-label-tertiary);
+}
+
+.add {
+	color: #15803d;
+	background: color-mix(in srgb, #15803d 10%, transparent);
+}
+
+.del {
+	color: #b91c1c;
+	background: color-mix(in srgb, #b91c1c 10%, transparent);
+}
+
+.statAdd,
+.statDel {
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
+}
+
+.statAdd {
+	color: #15803d;
+}
+
+.statDel {
+	color: #b91c1c;
+}
+
+:global([data-theme='dark']) .add,
+:global(.dark) .add,
+:global([data-theme='dark']) .add .no,
+:global(.dark) .add .no,
+:global([data-theme='dark']) .statAdd,
+:global(.dark) .statAdd {
+	color: #4ade80;
+}
+
+:global([data-theme='dark']) .del,
+:global(.dark) .del,
+:global([data-theme='dark']) .del .no,
+:global(.dark) .del .no,
+:global([data-theme='dark']) .statDel,
+:global(.dark) .statDel {
+	color: #f87171;
+}
+
+:global([data-theme='dark']) .add,
+:global(.dark) .add {
+	background: color-mix(in srgb, #4ade80 12%, transparent);
+}
+
+:global([data-theme='dark']) .del,
+:global(.dark) .del {
+	background: color-mix(in srgb, #f87171 12%, transparent);
+}
+
+:global([data-theme='dark']) .add .no,
+:global(.dark) .add .no {
+	box-shadow: inset 3px 0 0 0 #4ade80;
+	background: color-mix(in srgb, #4ade80 12%, var(--dsw-alias-markdown-code-block));
+}
+
+:global([data-theme='dark']) .del .no,
+:global(.dark) .del .no {
+	box-shadow: inset 3px 0 0 0 #f87171;
+	background: color-mix(in srgb, #f87171 12%, var(--dsw-alias-markdown-code-block));
+}
+
+/* Under the backdrop plugin's frosted glass the window's pale annotation
+   tints sit on a translucent glass base, so push the +/− line fills up a
+   touch to stay legible against the wallpaper. Glass off: the body
+   attribute (and therefore these rules) is absent — no visual change. */
+:global(body[data-dsh-bg-glass]) [data-diff-window] .add {
+	background: color-mix(in srgb, #15803d 16%, transparent);
+}
+
+:global(body[data-dsh-bg-glass]) [data-diff-window] .del {
+	background: color-mix(in srgb, #b91c1c 16%, transparent);
+}
+
+:global(body[data-dsh-bg-glass]) [data-diff-window] .del .no {
+	background: color-mix(in srgb, #b91c1c 16%, var(--dsw-alias-markdown-code-block));
+}
+
+:global(body[data-dsh-bg-glass]) [data-diff-window] .add .no {
+	background: color-mix(in srgb, #15803d 16%, var(--dsw-alias-markdown-code-block));
+}
+
+.footer {
+	padding: 3px 8px;
+	border-top: 1px solid var(--dsw-alias-border-secondary, rgba(127, 127, 127, 0.15));
+	color: var(--dsw-alias-label-tertiary);
+}

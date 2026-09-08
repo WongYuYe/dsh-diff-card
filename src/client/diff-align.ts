@@ -1,0 +1,253 @@
+/**
+ * Line-level alignment for one diff hunk's two sides: an LCS walk marks the
+ * lines both sides share, shared lines become context around each changed
+ * run (CONTEXT_LINES per side, the GitHub/GitLab/VS Code convention), and
+ * runs of untouched lines farther out collapse into single gap rows.
+ * The same LCS walk also feeds changedLineCounts — the badge/footer
+ * arithmetic — so numbers and rendered rows share one source of truth.
+ * ponytail: the context width is a fixed constant; promote it to plugin
+ * config if a real request lands.
+ */
+
+/** Unchanged context rows kept on each side of a changed run. */
+export const CONTEXT_LINES = 3
+
+/** Above this per-side line count the DP table is skipped and the caller falls back to plain blocks. */
+export const ALIGN_MAX_SIDE_LINES = 1200
+
+/** Kind of one rendered alignment row ('gap' marks a collapsed run). */
+export type AlignedKind = 'del' | 'add' | 'ctx' | 'gap'
+
+/** One aligned output row; `text` is '\u22ef' for gaps. */
+export interface AlignedRow {
+  kind: AlignedKind
+  text: string
+  /** 0-based position of the row's line on the OLD side ('del'/'ctx' rows). */
+  oldIdx?: number
+  /** 0-based position of the row's line on the NEW side ('add'/'ctx' rows). */
+  newIdx?: number
+}
+
+/** One LCS step between the sides ('ctx' = shared by both). */
+interface AlignOp {
+  kind: 'del' | 'add' | 'ctx'
+  text: string
+}
+
+/**
+ * LCS result cache: the same two sides are aligned by the badge arithmetic
+ * (diffStats) AND by the rendered window, and one expanded file can re-render
+ * across fold/collapse changes — the DP is the expensive step (up to ~1.4 M
+ * comparisons at the 1200-line budget), the op stream is the reuse unit.
+ * Keyed on the joined lines (cheap vs the DP), LRU-bounded.
+ */
+const lcsCache = new Map<string, AlignOp[]>()
+const LCS_CACHE_LIMIT = 64
+
+/**
+ * Walk the two sides through an LCS dynamic program into a del/add/ctx op
+ * stream. Ties prefer deletions first, matching unified diff ordering.
+ */
+function lcsOps(oldLines: readonly string[], newLines: readonly string[]): AlignOp[] {
+  const m = oldLines.length
+  const n = newLines.length
+  // JSON key: content lines are arbitrary text (edit args may embed any
+  // separator), so a string-joined key could collide on crafted input; the
+  // serialized pair is exact.
+  const cacheKey = JSON.stringify([oldLines, newLines])
+  const cached = lcsCache.get(cacheKey)
+  if (cached !== undefined) {
+    lcsCache.delete(cacheKey)
+    lcsCache.set(cacheKey, cached)
+    return cached
+  }
+  const compute = (): AlignOp[] => {
+    // Trivial sides (create / wipe) need no table: the answer is one-sided.
+    if (m === 0) return newLines.map(text => ({ kind: 'add' as const, text }))
+    if (n === 0) return oldLines.map(text => ({ kind: 'del' as const, text }))
+  const w = n + 1
+  const dp = new Uint32Array((m + 1) * w)
+  for (let i = m - 1; i >= 0; i--) {
+    const row = i * w
+    const below = row + w
+    const line = oldLines[i]
+    for (let j = n - 1; j >= 0; j--) {
+      dp[row + j] = line === newLines[j] ? dp[below + j + 1] + 1 : Math.max(dp[below + j], dp[row + j + 1])
+    }
+  }
+  const ops: AlignOp[] = []
+  let i = 0
+  let j = 0
+  while (i < m && j < n) {
+    if (oldLines[i] === newLines[j]) {
+      ops.push({ kind: 'ctx', text: oldLines[i] })
+      i += 1
+      j += 1
+    } else if (dp[(i + 1) * w + j] >= dp[i * w + j + 1]) {
+      ops.push({ kind: 'del', text: oldLines[i] })
+      i += 1
+    } else {
+      ops.push({ kind: 'add', text: newLines[j] })
+      j += 1
+    }
+  }
+  while (i < m) {
+    ops.push({ kind: 'del', text: oldLines[i] })
+    i += 1
+  }
+  while (j < n) {
+    ops.push({ kind: 'add', text: newLines[j] })
+    j += 1
+  }
+  return ops
+  }
+  const ops = compute()
+  lcsCache.set(cacheKey, ops)
+  if (lcsCache.size > LCS_CACHE_LIMIT) {
+    const oldest = lcsCache.keys().next().value
+    if (oldest !== undefined) lcsCache.delete(oldest)
+  }
+  return ops
+}
+
+/**
+ * Keep changed ops plus CONTEXT_LINES shared rows around them; everything
+ * else folds into single gap rows between kept runs.
+ */
+function collapse(ops: readonly AlignOp[], context: number): AlignedRow[] {
+  const keep = new Array<boolean>(ops.length).fill(false)
+  for (let k = 0; k < ops.length; k++) {
+    if (ops[k].kind === 'ctx') continue
+    for (let d = Math.max(0, k - context); d <= Math.min(ops.length - 1, k + context); d++) {
+      keep[d] = true
+    }
+  }
+  const rows: AlignedRow[] = []
+  let gapping = false
+  // Side counters advance for EVERY op — a folded row's line still occupies
+  // its side position, so kept rows number against the full sides.
+  let i = 0
+  let j = 0
+  for (let k = 0; k < ops.length; k++) {
+    const op = ops[k]
+    const oldIdx = op.kind === 'add' ? undefined : i
+    const newIdx = op.kind === 'del' ? undefined : j
+    if (op.kind === 'del') i += 1
+    else if (op.kind === 'add') j += 1
+    else {
+      i += 1
+      j += 1
+    }
+    if (keep[k]) {
+      // A row carries ONLY its meaningful side index (del → old, add → new,
+      // ctx → both) so key sets stay honest for consumers and assertions.
+      const row: AlignedRow = op.kind === 'del'
+        ? { kind: op.kind, text: op.text, oldIdx }
+        : op.kind === 'add'
+          ? { kind: op.kind, text: op.text, newIdx }
+          : { kind: op.kind, text: op.text, oldIdx, newIdx }
+      rows.push(row)
+      gapping = false
+    } else if (!gapping) {
+      rows.push({ kind: 'gap', text: '\u22ef' })
+      gapping = true
+    }
+  }
+  return rows
+}
+
+/** True changed-line totals between two sides (the rendered del/add rows). */
+export interface ChangedCounts {
+  readonly added: number
+  readonly removed: number
+}
+
+/**
+ * Count the real changed lines between two sides: the del/add ops of the same
+ * LCS walk the renderer uses, so badge totals always equal the colored rows
+ * the expanded window draws — shared locator/context lines count nowhere.
+ * Returns null when either side exceeds the alignment budget; the caller then
+ * falls back to the full block arithmetic (every old line removed, every new
+ * line added), matching the over-budget window's plain-block rendering.
+ * @param oldLines - the pre-image content lines (empty for creations).
+ * @param newLines - the post-image content lines.
+ */
+export function changedLineCounts(oldLines: readonly string[], newLines: readonly string[]): ChangedCounts | null {
+  if (oldLines.length > ALIGN_MAX_SIDE_LINES || newLines.length > ALIGN_MAX_SIDE_LINES) return null
+  let added = 0
+  let removed = 0
+  for (const op of lcsOps(oldLines, newLines)) {
+    if (op.kind === 'del') removed++
+    else if (op.kind === 'add') added++
+  }
+  return { added, removed }
+}
+
+/**
+ * Unified-style rows for one hunk: changed lines with bounded shared-line
+ * context and collapsed untouched runs, or null when either side exceeds the
+ * alignment budget (caller renders plain blocks instead). Takes content-line
+ * arrays so a caller that already split its sides never splits twice.
+ * @param oldLines - the pre-image content lines (empty for creations).
+ * @param newLines - the post-image content lines.
+ */
+export function alignedHunkRows(oldLines: readonly string[], newLines: readonly string[]): AlignedRow[] | null {
+  if (oldLines.length > ALIGN_MAX_SIDE_LINES || newLines.length > ALIGN_MAX_SIDE_LINES) return null
+  return collapse(lcsOps(oldLines, newLines), CONTEXT_LINES)
+}
+
+/**
+ * Whether a hunk changes ONLY the raw text's terminator: identical content
+ * lines but with a trailing-newline difference ("a\n" → "a"). The line-LCS
+ * sees equal sides and would render a lone gap row with +0 −0 — the change
+ * is real (a file losing or gaining its final newline), so callers show a
+ * del/add pair for the final line instead.
+ * @param oldText - the pre-image raw text, null for creations.
+ * @param newText - the post-image raw text.
+ * @param oldLines - content lines of oldText.
+ * @param newLines - content lines of newText.
+ */
+export function terminatorOnly(
+  oldText: string | null,
+  newText: string,
+  oldLines: readonly string[],
+  newLines: readonly string[],
+): boolean {
+  if (oldText === null || oldText === newText) return false
+  if (oldLines.length !== newLines.length) return false
+  // Outside the alignment budget the window renders plain blocks with the
+  // full block arithmetic; keep the badge on the same arithmetic there.
+  if (oldLines.length > ALIGN_MAX_SIDE_LINES || newLines.length > ALIGN_MAX_SIDE_LINES) return false
+  for (let i = 0; i < oldLines.length; i++) {
+    if (oldLines[i] !== newLines[i]) return false
+  }
+  return true
+}
+
+/** The rendered del/add pair for a terminator-only hunk (final line twice). */
+export function terminatorRows(oldLines: readonly string[], newLines: readonly string[]): AlignedRow[] {
+  const oldLast = oldLines[oldLines.length - 1] ?? ''
+  const newLast = newLines[newLines.length - 1] ?? oldLast
+  return [
+    { kind: 'del', text: oldLast, oldIdx: oldLines.length - 1 },
+    { kind: 'add', text: newLast, newIdx: newLines.length - 1 },
+  ]
+}
+
+/**
+ * The gutter number each aligned row displays, for ONE hunk: 'del' rows read
+ * the OLD side and 'ctx'/'add' rows the NEW side, both offset by `base` — the
+ * 1-based line of the hunk's first side line in the file, which the caller
+ * locates in the current file. Rows without a locatable base (or a missing
+ * index) fall back to 1..N window-relative numbering so a gutter always
+ * renders; 'gap' rows carry no number.
+ */
+export function gutterNumbers(rows: readonly AlignedRow[], base: number | null): readonly (number | undefined)[] {
+  let seq = 1
+  return rows.map(row => {
+    if (row.kind === 'gap') return undefined
+    const idx = row.kind === 'del' ? row.oldIdx : row.newIdx
+    if (base !== null && idx !== undefined) return base + idx
+    return seq++
+  })
+}
