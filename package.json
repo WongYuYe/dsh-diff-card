@@ -1,6 +1,6 @@
 {
   "name": "dsh-diff-card",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Per-turn file-change card for DSH Desktop: +N −M badges, aligned diffs, and Mac/Windows file open (system app, Finder/Explorer, VS Code).",
   "keywords": [
     "deepseek-harness",

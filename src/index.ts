@@ -23,7 +23,7 @@
  * page that calls it. undo/open-with exist for user-clicked card actions only.
  */
 import { spawn } from 'node:child_process'
-import { open, readFile, lstat, realpath, readdir, unlink } from 'node:fs/promises'
+import { access, open, readFile, lstat, realpath, readdir, unlink } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
@@ -226,13 +226,86 @@ async function undoFile(cwd: string, session: string, turn: number | undefined, 
 function openerEnv(): NodeJS.ProcessEnv {
   if (process.platform === 'win32') return process.env
   const home = process.env.HOME ?? ''
+  // User shims (~/.local/bin) before /usr/local/bin: Cursor's installer
+  // often owns /usr/local/bin/code, while VS Code's `code` lives in ~/.local/bin.
   const extra = [
-    '/usr/bin',
-    '/usr/local/bin',
-    '/opt/homebrew/bin',
     home !== '' ? home + '/.local/bin' : '',
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/usr/bin',
   ].filter((entry) => entry !== '')
   return { ...process.env, PATH: extra.concat(process.env.PATH ?? '').join(':') }
+}
+
+function normalizeCliPath(file: string): string {
+  return file.replace(/\\/g, '/').toLowerCase()
+}
+
+/** Cursor ships a `code` shim that shadows VS Code on PATH. */
+function isCursorCli(resolvedPath: string): boolean {
+  const n = normalizeCliPath(resolvedPath)
+  return n.includes('/cursor.app/') || /(^|\/)cursor(\/|$)/.test(n)
+}
+
+function isVisualStudioCodeCli(resolvedPath: string): boolean {
+  const n = normalizeCliPath(resolvedPath)
+  return n.includes('/visual studio code.app/') || n.includes('/microsoft vs code/')
+}
+
+async function listPathCommands(name: string): Promise<string[]> {
+  return new Promise((resolveList) => {
+    const probe = spawn(process.platform === 'win32' ? 'where' : 'which', process.platform === 'win32' ? [name] : ['-a', name], {
+      shell: false,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: openerEnv(),
+    })
+    let out = ''
+    probe.stdout?.on('data', (chunk: Buffer | string) => {
+      out += String(chunk)
+    })
+    probe.once('error', () => resolveList([]))
+    probe.once('exit', () => {
+      const seen = new Set<string>()
+      const list: string[] = []
+      for (const line of out.split(/\r?\n/)) {
+        const entry = line.trim()
+        if (entry === '' || seen.has(entry)) continue
+        seen.add(entry)
+        list.push(entry)
+      }
+      resolveList(list)
+    })
+  })
+}
+
+async function resolveVisualStudioCodeCli(): Promise<string | null> {
+  for (const bin of await listPathCommands('code')) {
+    try {
+      const resolved = await realpath(bin)
+      if (isCursorCli(resolved)) continue
+      if (isVisualStudioCodeCli(resolved)) return bin
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+async function darwinVisualStudioCodeApp(): Promise<string | null> {
+  const home = process.env.HOME ?? ''
+  const candidates = [
+    '/Applications/Visual Studio Code.app',
+    home !== '' ? join(home, 'Applications/Visual Studio Code.app') : '',
+  ].filter((entry) => entry !== '')
+  for (const app of candidates) {
+    try {
+      await access(app)
+      return app
+    } catch {
+      continue
+    }
+  }
+  return null
 }
 
 /** Probe a PATH command without going through the shell. */
@@ -277,11 +350,11 @@ function spawnWindowsExplorer(file: string): Promise<void> {
   })
 }
 
-/** Open a file with the `code` CLI. Windows needs the .cmd shim via the shell. */
-function spawnCode(file: string): Promise<void> {
+/** Open a file with a resolved VS Code `code` CLI. Windows needs the .cmd shim. */
+function spawnCode(cli: string, file: string): Promise<void> {
   if (process.platform === 'win32') {
     return new Promise((resolvePromise, rejectPromise) => {
-      const child = spawn('code "' + file + '"', {
+      const child = spawn('"' + cli + '" "' + file + '"', {
         shell: true,
         detached: true,
         stdio: 'ignore',
@@ -291,13 +364,14 @@ function spawnCode(file: string): Promise<void> {
       setTimeout(() => resolvePromise(), 300)
     })
   }
-  return spawnDetached('code', [file])
+  return spawnDetached(cli, [file])
 }
 
 /**
  * Spawn one of the two whitelisted openers; both are fire-and-forget.
  * Windows keeps Explorer/`code`; macOS uses Finder (`open -R`) and VS Code
- * (`code`, then `open -a`); Linux reveals the parent folder with xdg-open.
+ * (`open -a` the app, then a realpath-checked `code`); Linux reveals the
+ * parent folder with xdg-open. Cursor's `code` shim is never used.
  */
 function openWith(cwd: string, requestedPath: string, target: unknown): Promise<void> {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -336,17 +410,24 @@ function openWith(cwd: string, requestedPath: string, target: unknown): Promise<
           return
         }
         if (target === 'vscode') {
-          if (await commandExists('code')) {
-            await spawnCode(file)
-            resolvePromise()
-            return
-          }
+          // macOS: prefer the VS Code app so Cursor's /usr/local/bin/code shim
+          // cannot steal "Open in VS Code". PATH `code` is used only after we
+          // realpath it and confirm it is Visual Studio Code, not Cursor.
           if (process.platform === 'darwin') {
-            await spawnDetached('/usr/bin/open', ['-a', 'Visual Studio Code', file])
+            const app = await darwinVisualStudioCodeApp()
+            if (app !== null) {
+              await spawnDetached('/usr/bin/open', ['-a', app, file])
+              resolvePromise()
+              return
+            }
+          }
+          const cli = await resolveVisualStudioCodeCli()
+          if (cli !== null) {
+            await spawnCode(cli, file)
             resolvePromise()
             return
           }
-          rejectPromise(new Error('code (VS Code CLI) is not available on this system'))
+          rejectPromise(new Error('Visual Studio Code is not available on this system'))
           return
         }
         rejectPromise(new Error('unknown open-with target'))
