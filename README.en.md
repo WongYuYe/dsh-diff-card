@@ -19,7 +19,7 @@ File-change card for [DSH Desktop](https://github.com/anywhere-labs/dsh-desktop)
 - Click a row to expand or collapse that file’s diff
 - **View changes**: expand every file and its diff; click again to collapse
 - **Review**: expand every diff in the turn
-- **Undo**: restore this turn’s files (refuses if they changed elsewhere)
+- **Undo**: restore this turn’s files (refuses if they changed elsewhere); the button then becomes **Restore**, which re-applies the undone changes. Undo and restore both open a lightweight confirm popover
 - Row **▾**: open with system, show in folder, VS Code, copy absolute / relative path
 - Covers `edit`, `write`, `str_replace_editor`, and Code Dispatch sub-calls
 - Copy follows the UI language (zh / en)

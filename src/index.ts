@@ -6,6 +6,7 @@
  *
  *   POST /dsh-diff-card/api/files.read  { cwd, path }
  *   POST /dsh-diff-card/api/undo        { cwd, files }
+ *   POST /dsh-diff-card/api/redo        { cwd, files }
  *   POST /dsh-diff-card/api/open-with   { cwd, path, target }
  *   GET  /dsh-diff-card/api/ping
  *
@@ -17,14 +18,16 @@
  * hunk chain in memory first — any drift (expected text absent or ambiguous)
  * rejects the whole file before a byte is written. Writes go through
  * writeFileAtomic; creates made by a turn are undone by deleting the file.
+ * Undo keeps the pre-undo UTF-8 bytes so restore writes that snapshot back
+ * instead of replaying hunks (a write/create has no unique oldText).
  *
  * Trust model: this route is same-origin and unauthenticated, exactly like
  * every other plugin-served Web API — it must not be more powerful than the
- * page that calls it. undo/open-with exist for user-clicked card actions only.
+ * page that calls it. undo/redo/open-with exist for user-clicked card actions only.
  */
 import { spawn } from 'node:child_process'
 import { access, open, readFile, lstat, realpath, readdir, unlink } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
@@ -62,6 +65,15 @@ interface UndoFile {
   diffs: UndoHunk[]
 }
 
+/** Snapshot of one file as undo found it, so redo can write that exact text back. */
+interface RedoSnapshot {
+  path: string
+  filename: string
+  mode: number
+  /** Exact UTF-8 text undo read before it wrote or deleted. */
+  text: string
+}
+
 /** A resolved, fence-checked file target: real path, mode and size (no bytes). */
 interface ResolvedTarget {
   /** The request-side path (pre-realpath), kept for swap re-verification. */
@@ -73,6 +85,24 @@ interface ResolvedTarget {
 
 /** Files larger than this are refused by undo (the hunk chain needs the whole file). */
 const UNDO_TEXT_LIMIT = 32 * 1024 * 1024
+/** Successful undo snapshots keyed by cwd + path, so a later restore writes the same bytes back. */
+const REDO_MAX_FILES = 64
+const redoSnapshots = new Map<string, RedoSnapshot>()
+
+function redoKey(cwd: string, path: string): string {
+  return cwd + '\0' + path
+}
+
+function rememberRedo(cwd: string, snapshot: RedoSnapshot): void {
+  const key = redoKey(cwd, snapshot.path)
+  if (redoSnapshots.has(key)) redoSnapshots.delete(key)
+  redoSnapshots.set(key, snapshot)
+  while (redoSnapshots.size > REDO_MAX_FILES) {
+    const oldest = redoSnapshots.keys().next().value
+    if (oldest === undefined) break
+    redoSnapshots.delete(oldest)
+  }
+}
 
 /**
  * Re-verify that a request-side path still resolves to the same target file.
@@ -110,6 +140,37 @@ async function resolveTarget(cwd: string, requestedPath: string): Promise<Resolv
   const filename = await realpath(candidate)
   if (!inside(root, filename)) throw new Error('resolved path is outside the session workspace')
   return { candidate, filename, mode: linkStat.mode & 0o777, size: linkStat.size }
+}
+
+/**
+ * Like resolveTarget, but a missing file is allowed when its parent directory
+ * is still inside the workspace. Redo needs this: undoing a turn create
+ * deletes the file, and restore has to write it back.
+ */
+async function resolveWritableTarget(cwd: string, requestedPath: string): Promise<ResolvedTarget & { missing: boolean }> {
+  if (typeof cwd !== 'string' || cwd === '') throw new Error('cwd is required')
+  if (typeof requestedPath !== 'string' || requestedPath === '') throw new Error('path is required')
+  const root = await realpath(cwd)
+  const candidate = resolve(root, requestedPath)
+  if (!inside(root, candidate)) throw new Error('path is outside the session workspace')
+  try {
+    const linkStat = await lstat(candidate)
+    if (linkStat.isSymbolicLink()) throw new Error('symbolic links are not supported')
+    if (!linkStat.isFile()) throw new Error('path is not a regular file')
+    const filename = await realpath(candidate)
+    if (!inside(root, filename)) throw new Error('resolved path is outside the session workspace')
+    return { candidate, filename, mode: linkStat.mode & 0o777, size: linkStat.size, missing: false }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  const parent = dirname(candidate)
+  const parentStat = await lstat(parent)
+  if (parentStat.isSymbolicLink()) throw new Error('symbolic links are not supported')
+  if (!parentStat.isDirectory()) throw new Error('parent path is not a directory')
+  const parentReal = await realpath(parent)
+  const filename = join(parentReal, basename(candidate))
+  if (!inside(root, parentReal) || !inside(root, filename)) throw new Error('resolved path is outside the session workspace')
+  return { candidate, filename, mode: 0o644, size: 0, missing: true }
 }
 
 /** Read a whole target, then re-verify identity before returning (TOCTOU guard). */
@@ -213,13 +274,92 @@ async function undoFile(cwd: string, session: string, turn: number | undefined, 
     await assertSamePath(target.candidate, target.filename)
     if (created) {
       await unlink(target.filename)
+      rememberRedo(cwd, { path: file.path, filename: target.filename, mode: target.mode, text: resolvedText })
       return { path: file.path, ok: true, deleted: true }
     }
     await writeFileAtomic(target.filename, text, { mode: target.mode })
+    rememberRedo(cwd, { path: file.path, filename: target.filename, mode: target.mode, text: resolvedText })
     return { path: file.path, ok: true }
   } catch (error) {
     return { path: file.path, ok: false, error: String((error as Error).message ?? error) }
   }
+}
+
+/**
+ * Restore one file from the snapshot undo captured: write the exact pre-undo
+ * text back. Hunk replay cannot restore a write/create (oldText is null) or
+ * a fragment that is no longer unique after peeling. When no snapshot remains
+ * (host restarted), fall back to replaying the hunk chain in settlement order.
+ */
+async function redoFromHunks(cwd: string, file: UndoFile): Promise<{ path: string; ok: boolean; error?: string; created?: boolean }> {
+  const target = await resolveWritableTarget(cwd, file.path)
+  if (!target.missing && target.size > UNDO_TEXT_LIMIT) {
+    return { path: file.path, ok: false, error: 'file too large to restore safely (' + target.size + ' bytes)' }
+  }
+  let text = target.missing ? '' : (await readWhole(target)).text
+  let created = target.missing
+  for (const hunk of file.diffs) {
+    if (hunk === undefined || typeof hunk.newText !== 'string') {
+      return { path: file.path, ok: false, error: 'malformed hunk' }
+    }
+    if (hunk.oldText === null) {
+      if (text === hunk.newText) continue
+      if (text !== '') return { path: file.path, ok: false, error: 'file drifted from the recorded create' }
+      text = hunk.newText
+      created = true
+    } else if (typeof hunk.oldText !== 'string') {
+      return { path: file.path, ok: false, error: 'malformed hunk' }
+    } else {
+      const next = replaceUnique(text, hunk.oldText, hunk.newText)
+      if (next === null) return { path: file.path, ok: false, error: 'file drifted: expected prior text not found or ambiguous' }
+      text = next
+    }
+  }
+  if (!target.missing) await assertSamePath(target.candidate, target.filename)
+  await writeFileAtomic(target.filename, text, { mode: target.mode })
+  return { path: file.path, ok: true, created }
+}
+
+async function redoFile(cwd: string, file: UndoFile): Promise<{ path: string; ok: boolean; error?: string; created?: boolean }> {
+  try {
+    const snapshot = redoSnapshots.get(redoKey(cwd, file.path))
+    if (snapshot === undefined) {
+      if (!Array.isArray(file.diffs) || file.diffs.length === 0) {
+        return { path: file.path, ok: false, error: 'no undo snapshot to restore' }
+      }
+      return await redoFromHunks(cwd, file)
+    }
+    const target = await resolveWritableTarget(cwd, file.path)
+    if (!target.missing && target.filename !== snapshot.filename) {
+      return { path: file.path, ok: false, error: 'file changed while being accessed (link swap)' }
+    }
+    if (!target.missing) {
+      const current = (await readWhole(target)).text
+      if (current === snapshot.text) {
+        redoSnapshots.delete(redoKey(cwd, file.path))
+        return { path: file.path, ok: true }
+      }
+    }
+    if (!target.missing) await assertSamePath(target.candidate, target.filename)
+    await writeFileAtomic(target.filename, snapshot.text, { mode: snapshot.mode })
+    redoSnapshots.delete(redoKey(cwd, file.path))
+    return { path: file.path, ok: true, created: target.missing }
+  } catch (error) {
+    return { path: file.path, ok: false, error: String((error as Error).message ?? error) }
+  }
+}
+
+function parseUndoFiles(files: unknown): UndoFile[] {
+  if (!Array.isArray(files)) return []
+  return files.map(file => ({
+    path: String((file as UndoFile).path ?? ''),
+    diffs: Array.isArray((file as UndoFile).diffs)
+      ? (file as UndoFile).diffs.map(hunk => ({
+        oldText: hunk === null || typeof hunk !== 'object' ? null : hunk.oldText ?? null,
+        newText: hunk === null || typeof hunk !== 'object' ? '' : String(hunk.newText ?? ''),
+      }))
+      : [],
+  }))
 }
 
 /** Extra PATH entries so GUI-launched Desktop can still find `code`. */
@@ -663,27 +803,25 @@ export function apply(ctx: Context): void {
           respond(res, 200, await captureSnapshot(String(body['cwd'] ?? ''), String(body['session'] ?? ''), body['turn']))
           return
         }
-        if (action === 'undo') {
+        if (action === 'undo' || action === 'redo') {
           const files = body['files']
           if (!Array.isArray(files)) {
             respond(res, 200, { ok: false, error: 'files must be an array', results: [] })
+            return
+          }
+          const cwd = String(body['cwd'] ?? '')
+          const parsed = parseUndoFiles(files)
+          if (action === 'redo') {
+            const results = []
+            for (const file of parsed) results.push(await redoFile(cwd, file))
+            respond(res, 200, { ok: results.every(r => r.ok), results })
             return
           }
           const turn = body['turn']
           const turnNo = typeof turn === 'number' && Number.isInteger(turn) && turn >= 1 ? turn : undefined
           const session = String(body['session'] ?? '')
           const results = []
-          for (const file of files as UndoFile[]) {
-            results.push(await undoFile(String(body['cwd'] ?? ''), session, turnNo, {
-              path: String(file.path ?? ''),
-              diffs: Array.isArray(file.diffs)
-                ? file.diffs.map(hunk => ({
-                  oldText: hunk === null || typeof hunk !== 'object' ? null : (hunk as UndoHunk).oldText ?? null,
-                  newText: hunk === null || typeof hunk !== 'object' ? '' : String((hunk as UndoHunk).newText ?? ''),
-                }))
-                : [],
-            }))
-          }
+          for (const file of parsed) results.push(await undoFile(cwd, session, turnNo, file))
           respond(res, 200, { ok: results.every(r => r.ok), results })
           return
         }

@@ -1,6 +1,6 @@
 /**
  * The per-turn file-change summary card (R2): a Codex-style card at each
- * completed turn's tail — "已编辑 N 个文件" with 查看更改 / 撤销 / 审核,
+ * completed turn's tail — "已编辑 N 个文件" with 查看更改 / 撤销 / 恢复 / 审核,
  * a 3-file preview, then per-file relative paths and +n −m. Clicking a row
  * expands that file's review diff. 审核 expands every file; 查看更改 shows
  * the full list. System open / Finder / VS Code stay on the row's hover menu.
@@ -27,7 +27,7 @@ import { prepareDiffWindow, type PreparedWindow } from './context-boost.ts'
 import { NS } from './locales.ts'
 import { hostAvailable, hostCall } from './api.ts'
 import { DiffWindow } from './diff-window.tsx'
-import { ArrowUpRightIcon, ExternalLinkIcon, PlusMinusIcon, UndoIcon, VSCodeIcon } from './icons.tsx'
+import { ArrowUpRightIcon, ExternalLinkIcon, PlusMinusIcon, RedoIcon, UndoIcon, VSCodeIcon } from './icons.tsx'
 import css from './turn-card.module.css'
 
 /** Codex-style preview: three files, then "show N more". */
@@ -68,7 +68,9 @@ export function TurnCard(props: TurnCardProps) {
   const [openFilePath, setOpenFilePath] = useState<string | null>(null)
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(() => new Set())
   const [hostReady, setHostReady] = useState(false)
-  const [undoState, setUndoState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')
+  const [undoState, setUndoState] = useState<'idle' | 'confirmUndo' | 'busy' | 'done' | 'confirmRedo' | 'error' | 'redoing' | 'redoError'>('idle')
+  const [actionError, setActionError] = useState<string | null>(null)
+  const confirmWrap = useRef<HTMLDivElement | null>(null)
   // Expanding a file for review runs ONE host read that both rebuilds
   // arg-derived (PTC) fragments with real file context and resolves every
   // hunk's gutter numbering basis; applied wire hunks already carry the host's
@@ -163,26 +165,93 @@ export function TurnCard(props: TurnCardProps) {
     return () => { alive = false }
   }, [])
 
+  const undoFiles = useMemo(() => allFiles.map(file => ({
+    path: file.path,
+    diffs: file.diffs.map(hunk => ({ oldText: hunk.oldText, newText: hunk.newText })),
+  })), [allFiles])
+
+  const confirming = undoState === 'confirmUndo' || undoState === 'confirmRedo'
+
+  const dismissConfirm = useCallback(() => {
+    setUndoState(current => current === 'confirmUndo' ? 'idle' : current === 'confirmRedo' ? 'done' : current)
+  }, [])
+
+  useEffect(() => {
+    if (!confirming) return
+    const onPointer = (event: PointerEvent) => {
+      if (confirmWrap.current?.contains(event.target as Node)) return
+      dismissConfirm()
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') dismissConfirm()
+    }
+    document.addEventListener('pointerdown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [confirming, dismissConfirm])
+
+  const firstActionError = (result: { ok: boolean; error?: string; results?: { error?: string }[] } | null): string | null => {
+    if (result === null) return 'host API unavailable'
+    if (typeof result.error === 'string' && result.error !== '') return result.error
+    const failed = result.results?.find(entry => typeof entry.error === 'string' && entry.error !== '')
+    return failed?.error ?? null
+  }
+
   /** Undo the whole turn: replay every recorded hunk chain in reverse on the host. */
   const undoTurn = useCallback(() => {
-    if (undoState === 'busy') return
+    setActionError(null)
     setUndoState('busy')
     void (async () => {
-      const result = await hostCall<{ ok: boolean }>('undo', {
+      const result = await hostCall<{ ok: boolean; error?: string; results?: { error?: string }[] }>('undo', {
         cwd,
         // The turn coordinate lets the host check its turn-start snapshot
         // before deleting a create-shaped file (an overwrite carries the same
         // null oldText but must never be deleted).
         turn: turn?.turn,
         session: sessionId,
-        files: allFiles.map(file => ({
-          path: file.path,
-          diffs: file.diffs.map(hunk => ({ oldText: hunk.oldText, newText: hunk.newText })),
-        })),
+        files: undoFiles,
       })
-      setUndoState(result !== null && result.ok ? 'done' : 'error')
+      if (result !== null && result.ok) {
+        setActionError(null)
+        setUndoState('done')
+        return
+      }
+      setActionError(firstActionError(result))
+      setUndoState('error')
     })()
-  }, [undoState, cwd, allFiles])
+  }, [cwd, sessionId, turn?.turn, undoFiles])
+
+  /** Write back the exact pre-undo file contents the host captured. */
+  const redoTurn = useCallback(() => {
+    setActionError(null)
+    setUndoState('redoing')
+    void (async () => {
+      const result = await hostCall<{ ok: boolean; error?: string; results?: { error?: string }[] }>('redo', { cwd, files: undoFiles })
+      if (result !== null && result.ok) {
+        setActionError(null)
+        setUndoState('idle')
+        return
+      }
+      setActionError(firstActionError(result))
+      setUndoState('redoError')
+    })()
+  }, [cwd, undoFiles])
+
+  const onUndoClick = useCallback(() => {
+    if (undoState === 'busy' || undoState === 'redoing') return
+    if (undoState === 'confirmUndo' || undoState === 'confirmRedo') {
+      dismissConfirm()
+      return
+    }
+    if (undoState === 'done' || undoState === 'redoError') {
+      setUndoState('confirmRedo')
+      return
+    }
+    setUndoState('confirmUndo')
+  }, [undoState, dismissConfirm])
 
   const toggleRevealed = useCallback((path: string) => {
     setRevealed(prev => {
@@ -268,16 +337,50 @@ export function TurnCard(props: TurnCardProps) {
         </div>
         <div className={css.headerActions}>
           {hostReady && (
-            <button
-              type="button"
-              className={css.undo + (undoState === 'done' ? ' ' + css.undoDone : '')}
-              disabled={undoState === 'busy' || undoState === 'done'}
-              title={undoState === 'error' ? t('card.undoFailedTitle') : t('card.undoTitle')}
-              onClick={undoTurn}
-            >
-              {undoState === 'busy' ? t('card.undoing') : undoState === 'done' ? t('card.undone') : undoState === 'error' ? t('card.undoFailed') : t('card.undo')}
-              {undoState === 'idle' && <UndoIcon />}
-            </button>
+            <div ref={confirmWrap} className={css.undoWrap}>
+              <button
+                type="button"
+                className={css.undo}
+                disabled={undoState === 'busy' || undoState === 'redoing'}
+                aria-haspopup="dialog"
+                aria-expanded={confirming}
+                title={
+                  undoState === 'error' ? (actionError ?? t('card.undoFailedTitle'))
+                    : undoState === 'redoError' ? (actionError ?? t('card.redoFailedTitle'))
+                      : undoState === 'done' || undoState === 'confirmRedo' ? t('card.redoTitle')
+                        : t('card.undoTitle')
+                }
+                onClick={onUndoClick}
+              >
+                {undoState === 'busy' ? t('card.undoing')
+                  : undoState === 'redoing' ? t('card.redoing')
+                    : undoState === 'error' ? t('card.undoFailed')
+                      : undoState === 'redoError' ? t('card.redoFailed')
+                        : undoState === 'done' || undoState === 'confirmRedo' ? t('card.redo')
+                          : t('card.undo')}
+                {(undoState === 'idle' || undoState === 'error' || undoState === 'confirmUndo' || undoState === 'busy') && <UndoIcon />}
+                {(undoState === 'done' || undoState === 'redoError' || undoState === 'confirmRedo' || undoState === 'redoing') && <RedoIcon />}
+              </button>
+              {confirming && (
+                <div className={css.confirm} role="dialog" aria-modal="false">
+                  <p className={css.confirmBody}>
+                    {undoState === 'confirmRedo' ? t('card.redoConfirmBody') : t('card.undoConfirmBody')}
+                  </p>
+                  <div className={css.confirmActions}>
+                    <button type="button" className={css.confirmCancel} onClick={dismissConfirm}>
+                      {t('card.confirmCancel')}
+                    </button>
+                    <button
+                      type="button"
+                      className={css.confirmOk}
+                      onClick={undoState === 'confirmRedo' ? redoTurn : undoTurn}
+                    >
+                      {undoState === 'confirmRedo' ? t('card.redoConfirm') : t('card.undoConfirm')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           <button
             type="button"

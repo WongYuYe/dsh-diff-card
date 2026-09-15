@@ -60,6 +60,15 @@ export function UndoIcon({ size = 14 }: IconProps) {
   )
 }
 
+export function RedoIcon({ size = 14 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path d="M12.5 7.2A5.2 5.2 0 1 0 13.2 10" />
+      <path d="M12.5 3.2v4h-4" />
+    </svg>
+  )
+}
+
 export function ArrowUpRightIcon({ size = 12 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
